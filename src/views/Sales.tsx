@@ -1,267 +1,225 @@
 import { useState } from "react";
-import { useHelm } from "../lib/store";
-import type { DraftKind, Lead, Stage } from "../lib/types";
-import { daysSince, money, timeAgo } from "../lib/types";
-import { stageLabel } from "../agents/sales";
-import { Btn, Card, Icon, Modal, SectionHead, Why, inputCls } from "../components/ui";
+import { useSutr } from "../lib/store";
+import { CITIES, TIERS, daysSince, money, timeAgo, type Lead, type LeadSource } from "../lib/types";
+import { churnBlock, pipelineStats, stageLabel } from "../agents/sales";
+import { Bar, Btn, Card, Icon, Modal, ReasoningPanel, SectionHead, Stat, inputCls } from "../components/ui";
 
-const COLS: Array<{ key: Stage; label: string; hint: string }> = [
-  { key: "new", label: "New", hint: "sourced, untouched" },
-  { key: "contacted", label: "Contacted", hint: "first email out" },
-  { key: "followup", label: "Follow-up", hint: "in the cadence" },
-  { key: "won", label: "Won / Lost", hint: "closed" },
-];
-
-const kindFor = (l: Lead): DraftKind => (l.stage === "new" ? "outreach" : l.cold ? "nudge" : "followup");
+const STAGES: Lead["stage"][] = ["new", "contacted", "followup", "won", "lost"];
+const SOURCES: LeadSource[] = ["WedMeGood directory", "Instagram DM", "LinkedIn", "WIPA referral", "Expo", "Inbound form", "Referral"];
 
 export default function Sales() {
-  const h = useHelm();
+  const h = useSutr();
   const { s } = h;
-  const [preview, setPreview] = useState<string | null>(null);
-  const [replyFor, setReplyFor] = useState<string | null>(null);
+  const p = pipelineStats(s);
+  const [open, setOpen] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ company: "", contact: "", email: "", source: "website" as Lead["source"], value: "", notes: "" });
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const [f, setF] = useState({ planner: "", studio: "", city: CITIES[0] as string, eventsPerYear: 20, usesTool: "spreadsheets" as Lead["usesTool"], source: "Inbound form" as LeadSource, notes: "" });
 
-  const ready = s.drafts.filter((d) => d.status === "ready");
-  const synced = s.drafts.filter((d) => d.status === "synced");
-  const sentCount = s.drafts.filter((d) => d.status === "sent").length;
-  const leadOf = (id: string) => s.leads.find((l) => l.id === id);
-  const draft = s.drafts.find((d) => d.id === preview);
+  const queue = s.drafts.filter((d) => d.status !== "sent");
 
-  const copy = async (subject: string, body: string) => {
-    try {
-      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
-      h.toast("Email copied — paste it anywhere, or approve to sync to Gmail Drafts", "sales");
-    } catch {
-      h.toast("Clipboard blocked by browser — select and copy manually", "sales");
-    }
-  };
-
-  const submitLead = () => {
-    if (!form.company.trim() || !form.contact.trim()) return;
-    h.addLead({
-      company: form.company.trim(),
-      contact: form.contact.trim(),
-      email: form.email.trim() || "—",
-      source: form.source,
-      value: Number(form.value) || 0,
-      notes: form.notes.trim(),
-    });
-    setForm({ company: "", contact: "", email: "", source: "website", value: "", notes: "" });
-    setAddOpen(false);
+  const draft = async (leadId: string, kind: "outreach" | "followup" | "nudge") => {
+    setDrafting(leadId + kind);
+    await h.requestDraft(leadId, kind);
+    setDrafting(null);
   };
 
   return (
     <div>
-      {/* guardrail */}
-      <div className="mb-5 flex items-center gap-2.5 rounded-lg border border-ops/25 bg-ops/8 px-4 py-2.5">
-        <Icon name="shield" size={16} className="shrink-0 text-ops" />
-        <p className="text-[12.5px] text-ink/80">
-          <b>Hard rule:</b> this agent creates Gmail <b>drafts</b> — it can never send. You approve, you click send in Gmail.
-          {!s.settings.gmailConnected && <span className="ml-1 font-medium text-alert">Gmail isn't connected — connect it in Settings to sync drafts.</span>}
-        </p>
+      {/* stats */}
+      <div className="stagger mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Stat label="Open pipeline" value={money(p.openValue)} sub={`${p.openCount} planners · per-event value`} />
+        <Stat label="Win rate" value={`${p.winRate}%`} sub="closed won vs lost, all time" />
+        <Stat label="Awaiting your click" value={p.draftsReady} sub="drafts ready — none send without you" accent="text-[#8a6414]" />
+        <Stat label="Cold leads" value={p.coldCount} sub={`no touch in ${s.settings.coldDays}+ days`} accent={p.coldCount ? "text-warn" : "text-sage"} />
       </div>
 
-      {/* ============ Draft queue ============ */}
+      {/* gmail banner */}
+      {!s.settings.gmailConnected && (
+        <div className="anim-fade-up mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-gold/35 bg-gold/8 px-4 py-3">
+          <Icon name="mail" size={17} className="text-[#8a6414]" />
+          <p className="flex-1 text-[12.5px] text-ink/85">
+            <b>Gmail not connected</b> — drafts are created in-sandbox. Connect for real Drafts-folder sync (drafts scope only; sending stays yours).
+          </p>
+          <Btn size="sm" variant="gold" onClick={() => h.go("settings")}><Icon name="lock" size={12} /> Connect Gmail</Btn>
+        </div>
+      )}
+
+      {/* ready-to-send queue */}
       <SectionHead
-        kicker="Draft-then-approve queue"
-        title={`Ready for your review (${ready.length})`}
-        right={sentCount ? <span className="font-mono text-[11px] text-inkmute">{sentCount} sent by you · tracked</span> : undefined}
+        kicker="Draft-then-approve · the hard rule lives here"
+        title={`Ready to send (${queue.filter((d) => d.status === "ready").length})`}
+        right={<span className="font-mono text-[10.5px] text-inkmute">no email leaves your account without your click</span>}
       />
-      <div className="stagger mb-7 grid gap-3 lg:grid-cols-2">
-        {ready.map((d) => {
-          const lead = leadOf(d.leadId);
+      <div className="stagger mb-7 space-y-3">
+        {queue.map((d) => {
+          const lead = s.leads.find((l) => l.id === d.leadId);
+          const expanded = open === d.id;
           return (
-            <Card key={d.id} className="lift overflow-hidden">
-              <div className="flex items-center justify-between border-b border-line bg-canvas/60 px-4 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-sales/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-sales">{d.kind}</span>
-                  <span className="text-[12px] font-medium">{lead?.company}</span>
+            <Card key={d.id} className="overflow-hidden">
+              <div className="flex flex-wrap items-center gap-3 border-b border-line bg-canvas/60 px-4 py-3">
+                <span className={`grid h-9 w-9 place-items-center rounded-lg ${d.kind === "nudge" ? "bg-warn/12 text-warn" : "bg-gold/12 text-[#8a6414]"}`}>
+                  <Icon name="mail" size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13.5px] font-bold">{d.subject}</span>
+                    <span className="rounded-full bg-plum/8 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-plum2">{d.kind}</span>
+                    <span className={`rounded-full px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide ${d.status === "ready" ? "bg-gold/15 text-[#8a6414]" : "bg-sage/12 text-sage"}`}>
+                      {d.status === "ready" ? "awaiting you" : "in Gmail drafts"}
+                    </span>
+                  </div>
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-inkmute">
+                    to {lead?.planner} · {lead?.studio} · {timeAgo(d.createdAt)}
+                  </div>
                 </div>
-                <span className="font-mono text-[10.5px] text-inkmute">{timeAgo(d.createdAt)}</span>
+                <button onClick={() => setOpen(expanded ? null : d.id)} className="flex items-center gap-1 text-[12px] font-semibold text-plum hover:underline">
+                  {expanded ? "Collapse" : "Read draft"} <Icon name="chevD" size={12} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+                </button>
               </div>
-              <div className="p-4">
-                <div className="font-mono text-[10.5px] uppercase tracking-wide text-inkmute">To: {lead?.email}</div>
-                <div className="mt-1 font-display text-[14.5px] font-semibold leading-snug">{d.subject}</div>
-                <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-inksoft">{d.body}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Why text={d.why} label="Why this draft?" />
-                  <Btn size="sm" variant="ghost" onClick={() => setPreview(d.id)}><Icon name="eye" size={13} /> Preview</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => copy(d.subject, d.body)}><Icon name="copy" size={13} /> Copy</Btn>
-                  <span className="flex-1" />
-                  <Btn size="sm" disabled={!s.settings.gmailConnected} onClick={() => h.approveDraft(d.id)} title={s.settings.gmailConnected ? "Creates the draft in your Gmail Drafts folder" : "Connect Gmail in Settings first"}>
-                    <Icon name="mail" size={13} /> Approve → Gmail Drafts
-                  </Btn>
+              {expanded && (
+                <div className="anim-fade-in space-y-3 px-4 py-4">
+                  <pre className="scroll-slim max-h-[300px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-line bg-canvas/70 p-4 font-body text-[13px] leading-relaxed text-ink/90">{d.body}</pre>
+                  <ReasoningPanel r={d.reasoning} label="Why the agent wrote it this way" />
+                  <div className="flex flex-wrap gap-2">
+                    {d.status === "ready" ? (
+                      <>
+                        <Btn variant="gold" onClick={() => h.approveDraft(d.id)}><Icon name="check" size={14} /> Approve → Gmail Drafts</Btn>
+                        <Btn variant="ghost" onClick={() => h.go("settings")}><Icon name="lock" size={13} /> {s.settings.gmailConnected ? s.settings.gmailAccount : "sandbox mode"}</Btn>
+                      </>
+                    ) : (
+                      <Btn variant="solid" onClick={() => h.markSent(d.id)}><Icon name="send" size={14} /> I sent it from Gmail</Btn>
+                    )}
+                  </div>
+                  {d.status === "synced" && (
+                    <p className="text-[11.5px] text-inksoft">Open Gmail → Drafts, review once more, press send. Then tap “I sent it” so the lead stage and cadence update.</p>
+                  )}
                 </div>
-              </div>
+              )}
             </Card>
           );
         })}
-        {synced.map((d) => {
-          const lead = leadOf(d.leadId);
-          return (
-            <Card key={d.id} className="border-ops/30 bg-ops/5 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Icon name="check" size={15} className="text-ops" />
-                  <span className="text-[13px] font-semibold">{lead?.company} — synced to Gmail Drafts</span>
-                </div>
-                <span className="font-mono text-[10.5px] text-inkmute">{timeAgo(d.createdAt)}</span>
-              </div>
-              <p className="mt-1 text-[12px] text-inksoft">Waiting in <b className="text-ink">Gmail → Drafts</b>. Open it, press send, then tell me so I update the lead.</p>
-              <div className="mt-2.5 flex gap-2">
-                <Btn size="sm" variant="outline" onClick={() => copy(d.subject, d.body)}><Icon name="copy" size={13} /> Copy again</Btn>
-                <Btn size="sm" onClick={() => h.markSent(d.id)}><Icon name="send" size={13} /> I sent it — update lead</Btn>
-              </div>
-            </Card>
-          );
-        })}
-        {ready.length === 0 && synced.length === 0 && (
-          <Card className="p-8 text-center lg:col-span-2">
+        {queue.length === 0 && (
+          <Card className="p-8 text-center">
             <Icon name="mail" size={26} className="mx-auto text-inkmute" />
-            <p className="mt-2 text-[13px] text-inksoft">Queue is clear. Draft one from any lead below, or ask the crew in chat.</p>
+            <p className="mt-2 text-[13px] text-inksoft">Queue is clear. Ask for a draft below, or say “draft a follow-up for Aarav” in the chat.</p>
           </Card>
         )}
       </div>
 
-      {/* ============ Pipeline ============ */}
+      {/* pipeline board */}
       <SectionHead
-        kicker={`Lead database · ${s.leads.length} leads`}
-        title="Pipeline"
-        right={
-          <Btn size="sm" onClick={() => setAddOpen(true)}>
-            <Icon name="plus" size={13} /> Add lead
-          </Btn>
-        }
+        kicker="New → Contacted → Follow-up → Won / Lost"
+        title="Planner pipeline"
+        right={<Btn size="sm" variant="gold" onClick={() => setAddOpen(true)}><Icon name="plus" size={13} /> Add planner lead</Btn>}
       />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {COLS.map((col) => {
-          const leads = s.leads.filter((l) => (col.key === "won" ? l.stage === "won" || l.stage === "lost" : l.stage === col.key));
+      <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+        {STAGES.map((stage) => {
+          const leads = s.leads.filter((l) => l.stage === stage);
           return (
-            <div key={col.key} className="rounded-xl border border-line bg-canvas/40 p-2.5">
-              <div className="mb-2 flex items-baseline justify-between px-1">
-                <span className="font-display text-[13.5px] font-semibold">{col.label}</span>
-                <span className="font-mono text-[10.5px] text-inkmute">{leads.length} · {col.hint}</span>
+            <div key={stage} className="rounded-xl border border-line bg-canvas/60 p-2.5">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.13em] text-inksoft">{stageLabel[stage]}</span>
+                <span className="rounded-full bg-surface px-1.5 py-0.5 font-mono text-[10px] text-inksoft shadow-sm">{leads.length}</span>
               </div>
               <div className="space-y-2">
-                {leads.map((l) => (
-                  <Card key={l.id} className={`lift p-3 ${l.stage === "lost" ? "opacity-55" : ""} ${l.stage === "won" ? "border-ops/30" : ""}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold leading-tight">{l.company}</div>
-                        <div className="truncate text-[11px] text-inksoft">{l.contact} · {l.source}</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-display text-[14px] font-bold">{money(l.value)}</div>
-                        {l.stage === "lost" ? (
-                          <div className="font-mono text-[9.5px] uppercase text-alert">lost</div>
-                        ) : l.stage === "won" ? (
-                          <div className="font-mono text-[9.5px] uppercase text-ops">won</div>
-                        ) : (
-                          <div className="font-mono text-[9.5px] uppercase text-inkmute">{daysSince(l.lastTouchAt)}d since touch</div>
-                        )}
-                      </div>
-                    </div>
-                    {l.cold && l.stage !== "won" && l.stage !== "lost" && (
-                      <div className="mt-2 flex items-center gap-1.5 rounded-md bg-alert/8 px-2 py-1 text-[11px] font-medium text-alert">
-                        <Icon name="alert" size={12} /> Cold — {daysSince(l.lastTouchAt)}d silent (threshold {s.settings.coldDays}d)
-                      </div>
-                    )}
-                    {l.notes && <p className="mt-2 line-clamp-2 text-[11.5px] leading-snug text-inksoft">{l.notes}</p>}
-                    {l.stage !== "won" && l.stage !== "lost" && (
-                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                        <Btn size="sm" variant="soft" onClick={() => h.requestDraft(l.id, kindFor(l))}>
-                          <Icon name="mail" size={12} /> {kindFor(l) === "outreach" ? "Outreach" : kindFor(l) === "nudge" ? "Nudge" : "Follow-up"}
-                        </Btn>
-                        <Btn size="sm" variant="ghost" onClick={() => setReplyFor(replyFor === l.id ? null : l.id)}>
-                          <Icon name="chevD" size={12} /> Log reply
-                        </Btn>
-                        <Btn size="sm" variant="ghost" className="text-ops" onClick={() => h.markWon(l.id)}>
-                          <Icon name="check" size={12} /> Won
-                        </Btn>
-                      </div>
-                    )}
-                    {replyFor === l.id && (
-                      <div className="anim-fade-up mt-2 rounded-lg border border-line bg-canvas/70 p-2.5">
-                        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-wide text-inkmute">
-                          Reply sentiment (tracked from Gmail in production)
+                {leads.map((l) => {
+                  const block = churnBlock(l, s);
+                  return (
+                    <Card key={l.id} className="lift p-3">
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="min-w-0">
+                          <div className="truncate text-[13px] font-bold">{l.studio}</div>
+                          <div className="truncate text-[11px] text-inksoft">{l.planner} · {l.city}</div>
                         </div>
-                        <div className="flex gap-1.5">
-                          <Btn size="sm" variant="soft" className="text-ops" onClick={() => { h.logReply(l.id, "positive"); setReplyFor(null); }}>Positive → Won</Btn>
-                          <Btn size="sm" variant="ghost" onClick={() => { h.logReply(l.id, "later"); setReplyFor(null); }}>“Not now”</Btn>
-                          <Btn size="sm" variant="ghost" className="text-alert" onClick={() => { h.logReply(l.id, "no"); setReplyFor(null); }}>No fit</Btn>
-                        </div>
+                        {l.cold && <span className="shrink-0 rounded-full bg-warn/12 px-1.5 py-0.5 font-mono text-[8.5px] font-bold uppercase text-warn">cold {daysSince(l.lastTouchAt)}d</span>}
                       </div>
-                    )}
-                  </Card>
-                ))}
-                {leads.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-line px-3 py-5 text-center text-[11.5px] text-inkmute">
-                    Nothing here
-                  </div>
-                )}
+                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                        <span className="rounded-full bg-plum/8 px-1.5 py-0.5 text-[10px] font-semibold text-plum2">{l.tierSuggestion} · {money(l.suggestedPrice)}</span>
+                        <span className="rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] text-inksoft">{l.eventsPerYear}/yr</span>
+                        <span className="rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] text-inksoft">{l.usesTool === "none" ? "no tool" : l.usesTool}</span>
+                      </div>
+                      <div className="mt-2"><Bar pct={l.score} className={l.score >= 75 ? "bg-gold" : "bg-plum3"} /></div>
+                      {l.nextAction && (
+                        <div className="mt-2 flex items-start gap-1.5 rounded-md bg-gold/8 px-2 py-1.5 text-[10.5px] font-medium leading-snug text-[#8a6414]">
+                          <Icon name="spark" size={11} className="mt-0.5 shrink-0" /> {l.nextAction}
+                        </div>
+                      )}
+                      {block.blocked && (
+                        <div className="mt-2 flex items-start gap-1.5 rounded-md bg-alert/8 px-2 py-1.5 text-[10.5px] font-semibold leading-snug text-alert">
+                          <Icon name="alert" size={11} className="mt-0.5 shrink-0" /> HOLD — Ops churn flag: {block.reason}
+                        </div>
+                      )}
+                      {(stage === "new" || stage === "contacted" || stage === "followup") && (
+                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          <Btn size="sm" variant="outline" disabled={drafting === l.id + (l.stage === "new" ? "outreach" : l.cold ? "nudge" : "followup")}
+                            onClick={() => draft(l.id, l.stage === "new" ? "outreach" : l.cold ? "nudge" : "followup")}>
+                            {drafting === l.id + (l.stage === "new" ? "outreach" : l.cold ? "nudge" : "followup")
+                              ? <><span className="spin-slow inline-block h-3 w-3 rounded-full border-2 border-plum/20 border-t-plum" /> reasoning…</>
+                              : <><Icon name="mail" size={12} /> {l.stage === "new" ? "Outreach" : l.cold ? "Nudge" : "Follow-up"}</>}
+                          </Btn>
+                          {l.touches > 0 && (
+                            <Btn size="sm" variant="ghost" title="Log a reply you received" onClick={() => h.logReply(l.id, "later")}>
+                              <Icon name="refresh" size={12} /> Reply: later
+                            </Btn>
+                          )}
+                          <Btn size="sm" variant="ghost" onClick={() => h.markWon(l.id)} title="Mark won"><Icon name="check" size={12} /> Won</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => h.markLost(l.id)} title="Mark lost"><Icon name="x" size={12} /></Btn>
+                        </div>
+                      )}
+                      {stage === "won" && l.wonAt && <div className="mt-2 font-mono text-[9.5px] uppercase text-sage">closed {timeAgo(l.wonAt)} · handoff ran</div>}
+                    </Card>
+                  );
+                })}
+                {leads.length === 0 && <div className="rounded-lg border border-dashed border-line px-2 py-4 text-center text-[11px] text-inkmute">empty</div>}
               </div>
             </div>
           );
         })}
       </div>
 
-      <p className="mt-4 text-center font-mono text-[10.5px] uppercase tracking-[0.14em] text-inkmute">
-        Sources: website forms · LinkedIn · referrals · trade shows · google ads · manual lists — add yours in Settings-free fashion above
-      </p>
-
-      {/* ============ Preview modal ============ */}
-      <Modal open={!!draft} onClose={() => setPreview(null)} title="Draft preview — exactly what Gmail will hold" wide>
-        {draft && (
-          <div>
-            <div className="rounded-lg border border-line bg-canvas/60 p-4">
-              <div className="space-y-1 border-b border-line pb-3 font-mono text-[11.5px]">
-                <div><span className="text-inkmute">From:</span> {s.settings.gmailAccount || "you (Gmail not connected)"}</div>
-                <div><span className="text-inkmute">To:</span> {leadOf(draft.leadId)?.email}</div>
-                <div><span className="text-inkmute">Subject:</span> <b>{draft.subject}</b></div>
+      {/* tier legend */}
+      <Card className="mb-6 p-4">
+        <div className="font-mono text-[9.5px] uppercase tracking-[0.15em] text-inkmute">Tier logic the Sales Agent reasons with</div>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {TIERS.map((t) => (
+            <div key={t.name} className="rounded-lg border border-line bg-canvas/60 p-2.5">
+              <div className="flex items-baseline justify-between">
+                <span className="font-display text-[14px] font-bold">{t.name}</span>
+                <span className="font-mono text-[11px] text-[#8a6414]">{money(t.price)}/event</span>
               </div>
-              <p className="whitespace-pre-line pt-3 text-[13.5px] leading-relaxed">{draft.body}</p>
+              <div className="text-[11px] text-inksoft">{t.blurb} — {t.fit}</div>
             </div>
-            <div className="mt-3 flex items-start gap-2 rounded-lg bg-pine p-3 text-canvas">
-              <Icon name="spark" size={14} className="mt-0.5 shrink-0 text-sales" />
-              <p className="text-[12px] leading-relaxed">{draft.why}</p>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <Btn variant="outline" onClick={() => copy(draft.subject, draft.body)}><Icon name="copy" size={14} /> Copy email</Btn>
-              <Btn disabled={!s.settings.gmailConnected || draft.status !== "ready"} onClick={() => { h.approveDraft(draft.id); setPreview(null); }}>
-                <Icon name="mail" size={14} /> Approve → Gmail Drafts
-              </Btn>
-            </div>
-          </div>
-        )}
-      </Modal>
+          ))}
+        </div>
+      </Card>
 
-      {/* ============ Add lead modal ============ */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add a lead to the database">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <input className={inputCls} placeholder="Company *" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-            <input className={inputCls} placeholder="Contact person *" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input className={inputCls} placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <select className={inputCls} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value as Lead["source"] })}>
-              <option value="website">Website form</option>
-              <option value="linkedin">LinkedIn</option>
-              <option value="referral">Referral</option>
-              <option value="trade-show">Trade show</option>
-              <option value="google-ads">Google Ads</option>
-              <option value="manual">Manual list</option>
-            </select>
-          </div>
-          <input className={inputCls} placeholder="Deal value ($)" type="number" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} />
-          <textarea className={`${inputCls} h-20 resize-none`} placeholder="Notes — pain points, context the agent should use" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <div className="flex justify-end gap-2 pt-1">
-            <Btn variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Btn>
-            <Btn onClick={submitLead} disabled={!form.company.trim() || !form.contact.trim()}>
-              <Icon name="plus" size={14} /> Add lead
-            </Btn>
-          </div>
+      {/* add lead modal */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add a planner lead — the agent qualifies it" wide>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">Studio</span>
+            <input className={inputCls} placeholder="e.g. Lotus & Line Events" value={f.studio} onChange={(e) => setF({ ...f, studio: e.target.value })} /></label>
+          <label className="block"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">Planner name</span>
+            <input className={inputCls} placeholder="e.g. Meera Kapoor" value={f.planner} onChange={(e) => setF({ ...f, planner: e.target.value })} /></label>
+          <label className="block"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">City</span>
+            <select className={inputCls} value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })}>{CITIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">Events per year</span>
+            <input type="number" min={1} className={inputCls} value={f.eventsPerYear} onChange={(e) => setF({ ...f, eventsPerYear: Math.max(1, Number(e.target.value) || 1) })} /></label>
+          <label className="block"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">Current tooling</span>
+            <select className={inputCls} value={f.usesTool} onChange={(e) => setF({ ...f, usesTool: e.target.value as Lead["usesTool"] })}>
+              {["none", "Meragi", "WedMeGood", "spreadsheets"].map((t) => <option key={t} value={t}>{t === "none" ? "no tool yet" : t}</option>)}
+            </select></label>
+          <label className="block"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">Source</span>
+            <select className={inputCls} value={f.source} onChange={(e) => setF({ ...f, source: e.target.value as LeadSource })}>{SOURCES.map((x) => <option key={x}>{x}</option>)}</select></label>
+          <label className="block sm:col-span-2"><span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-inkmute">Notes (what you know about their situation)</span>
+            <textarea className={`${inputCls} h-20 resize-none`} placeholder="e.g. Frustrated with WedMeGood commissions; runs 3 destination weddings a season…" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-[11px] text-inksoft">On save, the Sales Agent qualifies tier + score and shows its reasoning in the Activity log.</p>
+          <Btn variant="gold" disabled={!f.studio.trim() || !f.planner.trim()} onClick={() => {
+            h.addLead({ planner: f.planner.trim(), studio: f.studio.trim(), city: f.city, eventsPerYear: f.eventsPerYear, usesTool: f.usesTool, source: f.source, notes: f.notes.trim() || "—" });
+            setAddOpen(false); setF({ ...f, planner: "", studio: "", notes: "" });
+          }}><Icon name="plus" size={14} /> Qualify & add</Btn>
         </div>
       </Modal>
     </div>

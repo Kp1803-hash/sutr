@@ -1,18 +1,12 @@
 import { useState } from "react";
-import { useHelm } from "../lib/store";
+import { useSutr } from "../lib/store";
 import { AGENTS, timeAgo, type AgentId } from "../lib/types";
 import { AgentTag, Btn, Card, Icon } from "../components/ui";
 
-const KIND_ICON: Record<string, string> = {
-  digest: "helm",
-  alert: "alert",
-  sales: "mail",
-  idea: "spark",
-  doc: "file",
-};
+const KIND_ICON: Record<string, string> = { digest: "thread", alert: "alert", sales: "mail", idea: "spark", doc: "file" };
 
 export default function Inbox() {
-  const h = useHelm();
+  const h = useSutr();
   const { s } = h;
   const [filter, setFilter] = useState<AgentId | "all">("all");
   const unread = s.notices.filter((n) => !n.read).length;
@@ -24,14 +18,11 @@ export default function Inbox() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-1.5">
           {filters.map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
+            <button key={f} onClick={() => setFilter(f)}
               className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-all ${
-                filter === f ? "bg-ink text-canvas" : "border border-line bg-surface text-inksoft hover:border-ink/30 hover:text-ink"
-              }`}
-            >
-              {f === "all" ? `All (${s.notices.length})` : AGENTS[f].name.replace(" Agent", "").replace("Document ", "")}
+                filter === f ? "bg-plum text-cream" : "border border-line bg-surface text-inksoft hover:border-plum/40 hover:text-plum"
+              }`}>
+              {f === "all" ? `All (${s.notices.length})` : AGENTS[f].name.replace("Document ", "")}
             </button>
           ))}
         </div>
@@ -45,41 +36,27 @@ export default function Inbox() {
 
       <div className="stagger space-y-2.5">
         {list.map((n) => (
-          <Card
-            key={n.id}
-            className={`lift relative overflow-hidden p-4 ${!n.read ? "border-ink/20 shadow-sm" : "opacity-80"}`}
-          >
+          <Card key={n.id} className={`lift relative overflow-hidden p-4 ${!n.read ? "border-plum/25 shadow-sm" : "opacity-80"}`}>
             {!n.read && <span className={`absolute inset-y-0 left-0 w-1 ${AGENTS[n.agent].dot}`} />}
             <div className="flex items-start gap-3.5">
-              <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${AGENTS[n.agent].soft} ${AGENTS[n.agent].text}`}>
+              <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${AGENTS[n.agent].soft} ${n.agent === "vault" ? "text-plum2" : AGENTS[n.agent].text}`}>
                 <Icon name={KIND_ICON[n.kind]} size={16} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className={`text-[14px] leading-tight ${n.read ? "font-medium text-ink/80" : "font-semibold"}`}>{n.title}</h3>
-                  {!n.read && <span className="h-1.5 w-1.5 rounded-full bg-sales" />}
+                  {!n.read && <span className="h-1.5 w-1.5 rounded-full bg-gold" />}
                   <span className="font-mono text-[10.5px] text-inkmute">{timeAgo(n.at)}</span>
                 </div>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-inksoft">{n.body}</p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <AgentTag agent={n.agent} size="sm" />
                   {n.actionView && (
-                    <Btn
-                      size="sm"
-                      variant={n.read ? "ghost" : "outline"}
-                      onClick={() => {
-                        h.markRead(n.id);
-                        h.go(n.actionView!);
-                      }}
-                    >
+                    <Btn size="sm" variant={n.read ? "ghost" : "outline"} onClick={() => { h.markRead(n.id); h.go(n.actionView!); }}>
                       {n.actionLabel ?? "Open"} <Icon name="chevR" size={12} />
                     </Btn>
                   )}
-                  {!n.read && (
-                    <Btn size="sm" variant="ghost" onClick={() => h.markRead(n.id)}>
-                      Mark read
-                    </Btn>
-                  )}
+                  {!n.read && <Btn size="sm" variant="ghost" onClick={() => h.markRead(n.id)}>Mark read</Btn>}
                 </div>
               </div>
             </div>

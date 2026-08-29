@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useHelm } from "../lib/store";
-import { AGENTS, type AgentId, type View } from "../lib/types";
+import { useEffect, useState } from "react";
+import { useSutr } from "../lib/store";
+import { AGENTS, timeAgo, type AgentId, type View } from "../lib/types";
 import { expiringDocs } from "../agents/vault";
-import { healthScore } from "../agents/ops";
-import { Icon, AgentTag } from "./ui";
+import { Icon } from "./ui";
 import ChatPanel from "./ChatPanel";
+import KeyGate from "./KeyGate";
 import Today from "../views/Today";
 import Inbox from "../views/Inbox";
 import Sales from "../views/Sales";
@@ -15,198 +15,178 @@ import Activity from "../views/Activity";
 import Settings from "../views/Settings";
 
 const TITLES: Record<View, { title: string; sub: string }> = {
-  today: { title: "Morning Brief", sub: "Everything your crew did while you slept" },
-  inbox: { title: "Inbox", sub: "Notifications from all four agents" },
-  sales: { title: "Sales Agent", sub: "Pipeline, drafts, and the send-nothing-without-you queue" },
-  marketing: { title: "Marketing Agent", sub: "Idea drops, briefs, and the content calendar" },
-  ops: { title: "Operations Agent", sub: "Risk register, tasks, and vendor watch" },
-  vault: { title: "Document Vault", sub: "Every document, searchable by asking" },
-  activity: { title: "Activity Log", sub: "Every agent action, auditable" },
-  settings: { title: "Settings", sub: "Your rules — the agents follow them" },
+  today: { title: "Morning Brief", sub: "every thread of your day, connected" },
+  inbox: { title: "Inbox", sub: "notices and escalations from the crew" },
+  sales: { title: "Sales", sub: "planner pipeline · drafts you approve, never auto-sent" },
+  marketing: { title: "Marketing", sub: "the 6 AM drop, campaigns, content calendar" },
+  ops: { title: "Operations", sub: "onboarding, tickets, vendors, event timeline" },
+  vault: { title: "Document Vault", sub: "single source of truth · access-controlled" },
+  activity: { title: "Activity Log", sub: "every agent action, with its reasoning" },
+  settings: { title: "Settings", sub: "reasoning engine, rules, integrations, access" },
 };
 
-function nextSixAM(): Date {
-  const n = new Date();
-  n.setHours(6, 0, 0, 0);
-  if (n.getTime() <= Date.now()) n.setDate(n.getDate() + 1);
-  return n;
-}
-
 export default function Shell() {
-  const h = useHelm();
+  const h = useSutr();
   const { s } = h;
+  const [gateOpen, setGateOpen] = useState(
+    () => s.engine.provider === "none" && localStorage.getItem("sutr.gate.dismissed") !== "1"
+  );
+  const [bellOpen, setBellOpen] = useState(false);
   const [cmd, setCmd] = useState("");
-  const [now, setNow] = useState(new Date());
 
-  useEffect(() => {
-    const t = setInterval(() => {
-      setNow(new Date());
-      h.checkDayRollover();
-    }, 30000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { h.checkDayRollover(); /* eslint-disable-next-line */ }, []);
 
-  const badges = useMemo(
-    () => ({
-      inbox: s.notices.filter((n) => !n.read).length,
-      sales: s.drafts.filter((d) => d.status === "ready").length,
-      marketing: s.ideas.filter((i) => i.status === "new").length,
-      ops: s.risks.filter((r) => r.status === "open" && r.severity === "high").length,
-      vault: expiringDocs(s.docs).length,
-    }),
-    [s]
+  const unread = s.notices.filter((n) => !n.read).length;
+  const draftsReady = s.drafts.filter((d) => d.status === "ready").length;
+  const newIdeas = s.ideas.filter((i) => i.status === "new").length;
+  const openRisks = s.risks.filter((r) => r.status === "open").length;
+  const highRisks = s.risks.filter((r) => r.status === "open" && r.severity === "high").length;
+  const expiring = expiringDocs(s.docs, 45).length;
+
+  const nav = (v: View, icon: string, label: string, badge?: number, badgeCls?: string) => (
+    <button
+      onClick={() => { h.go(v); setBellOpen(false); }}
+      className={`nav-item flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] ${
+        s.view === v ? "bg-cream/12 text-cream" : "text-cream/60 hover:bg-cream/6 hover:text-cream/90"
+      }`}
+    >
+      <Icon name={icon} size={15} />
+      <span className="flex-1 font-medium">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold ${badgeCls ?? "bg-cream/15 text-cream"}`}>{badge}</span>
+      )}
+    </button>
   );
 
-  const nav: Array<{ section: string; items: Array<{ view: View; icon: string; agent?: AgentId }> }> = [
-    {
-      section: "Overview",
-      items: [
-        { view: "today", icon: "helm" },
-        { view: "inbox", icon: "inbox" },
-      ],
-    },
-    {
-      section: "Agents",
-      items: [
-        { view: "sales", icon: "target", agent: "sales" },
-        { view: "marketing", icon: "megaphone", agent: "marketing" },
-        { view: "ops", icon: "gauge", agent: "ops" },
-        { view: "vault", icon: "lock", agent: "vault" },
-      ],
-    },
-    {
-      section: "System",
-      items: [
-        { view: "activity", icon: "pulse" },
-        { view: "settings", icon: "sliders" },
-      ],
-    },
-  ];
+  const agentNav = (id: AgentId, v: View, icon: string, label: string, badge?: number, badgeCls?: string) => (
+    <button
+      onClick={() => { h.go(v); setBellOpen(false); }}
+      className={`nav-item flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] ${
+        s.view === v ? "bg-cream/12 text-cream" : "text-cream/60 hover:bg-cream/6 hover:text-cream/90"
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${AGENTS[id].dot} ${id === "ops" && highRisks ? "pulse-gold" : ""}`} />
+      <Icon name={icon} size={15} />
+      <span className="flex-1 font-medium">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold ${badgeCls ?? "bg-cream/15 text-cream"}`}>{badge}</span>
+      )}
+    </button>
+  );
 
-  const countdown = useMemo(() => {
-    const ms = nextSixAM().getTime() - now.getTime();
-    const h = Math.floor(ms / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    return `${h}h ${m.toString().padStart(2, "0")}m`;
-  }, [now]);
-
-  const health = healthScore(s);
-
-  const submitCmd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cmd.trim()) return;
-    h.sendChat(cmd.trim());
-    setCmd("");
-  };
+  const engineLabel =
+    s.engine.provider === "claude" ? "Claude reasoning" :
+    s.engine.provider === "openai" ? "OpenAI reasoning" : "Local inference";
 
   return (
-    <div className="ambient flex h-screen overflow-hidden">
-      {/* ============ Sidebar ============ */}
-      <aside className="flex w-[228px] shrink-0 flex-col border-r border-pine3 bg-pine text-canvas">
-        <button onClick={() => h.go("today")} className="group flex items-center gap-2.5 px-4 pb-4 pt-5 text-left">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-canvas/10 text-canvas transition-colors group-hover:bg-sales/80">
-            <Icon name="helm" size={22} />
+    <div className="ambient flex h-full overflow-hidden">
+      {/* ================= Sidebar ================= */}
+      <aside className="plum-veil flex w-[248px] shrink-0 flex-col bg-plum text-cream">
+        <div className="flex items-center gap-3 px-4 pb-4 pt-5">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gold text-plum shadow-[0_4px_14px_rgba(201,150,46,0.4)]">
+            <Icon name="thread" size={22} />
           </span>
-          <span>
-            <span className="block font-display text-[17px] font-bold leading-none tracking-tight">HELM</span>
-            <span className="mt-1 block font-mono text-[9.5px] uppercase tracking-[0.14em] text-canvas/45">
-              {s.settings.businessName}
-            </span>
-          </span>
-        </button>
-
-        <nav className="scroll-slim flex-1 overflow-y-auto px-2.5">
-          {nav.map((sec) => (
-            <div key={sec.section} className="mb-4">
-              <div className="px-2.5 pb-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-canvas/35">
-                {sec.section}
-              </div>
-              {sec.items.map((item) => {
-                const active = s.view === item.view;
-                const label = item.view === "ops" ? "Operations" : item.view === "today" ? "Today" : item.view.charAt(0).toUpperCase() + item.view.slice(1);
-                const badge = badges[item.view as keyof typeof badges];
-                const accent = item.agent ? AGENTS[item.agent].dot : "bg-canvas";
-                return (
-                  <button
-                    key={item.view}
-                    onClick={() => h.go(item.view)}
-                    className={`nav-item relative mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium ${
-                      active ? "bg-pine3 text-canvas" : "text-canvas/65 hover:bg-pine2 hover:text-canvas"
-                    }`}
-                  >
-                    {active && <span className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r ${accent}`} />}
-                    <span className={active && item.agent ? AGENTS[item.agent!].text : ""}>
-                      <Icon name={item.icon} size={16} />
-                    </span>
-                    <span className="flex-1 text-left">{label}</span>
-                    {badge ? (
-                      <span
-                        className={`rounded-full px-1.5 py-px font-mono text-[10px] font-semibold ${
-                          item.view === "ops" ? "bg-alert text-canvas" : item.view === "inbox" ? "bg-canvas text-pine" : "bg-canvas/15 text-canvas"
-                        }`}
-                      >
-                        {badge}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        <div className="border-t border-pine3 px-4 py-3.5">
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${s.settings.gmailConnected ? "bg-ops pulse-dot" : "bg-canvas/25"}`} />
-            <span className="text-[11.5px] text-canvas/70">
-              {s.settings.gmailConnected ? `Gmail · drafts only` : "Gmail not connected"}
-            </span>
+          <div>
+            <div className="font-display text-[21px] font-bold leading-none tracking-tight">Sutr</div>
+            <div className="mt-1 font-mono text-[8.5px] uppercase tracking-[0.22em] text-goldsoft/80">every thread, connected</div>
           </div>
-          <div className="mt-2 flex items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-canvas/10 font-display text-[12px] font-bold">
-              {s.settings.ownerName.charAt(0)}
+        </div>
+
+        <div className="scroll-slim flex-1 space-y-4 overflow-y-auto px-2.5 pb-4">
+          <div>
+            <div className="px-3 pb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-cream/35">Overview</div>
+            {nav("today", "spark", "Morning Brief", unread, "bg-gold text-plum")}
+            {nav("inbox", "inbox", "Inbox", unread, "bg-gold text-plum")}
+          </div>
+          <div>
+            <div className="px-3 pb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-cream/35">Your crew</div>
+            {agentNav("sales", "sales", "mail", "Sales", draftsReady, "bg-gold text-plum")}
+            {agentNav("marketing", "marketing", "megaphone", "Marketing", newIdeas, "bg-rose/90 text-cream")}
+            {agentNav("ops", "ops", "gauge", "Operations", openRisks, highRisks ? "bg-alert text-cream" : "bg-cream/15 text-cream")}
+            {agentNav("vault", "vault", "file", "Document Vault", expiring, "bg-ivory/20 text-ivory")}
+          </div>
+          <div>
+            <div className="px-3 pb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-cream/35">System</div>
+            {nav("activity", "clock", "Activity Log")}
+            {nav("settings", "key", "Settings")}
+          </div>
+        </div>
+
+        <div className="border-t border-cream/10 p-3">
+          <button onClick={() => { h.go("settings"); }} className="group flex w-full items-center gap-2.5 rounded-lg bg-cream/6 px-3 py-2.5 text-left transition-colors hover:bg-cream/10">
+            <span className={`h-2 w-2 rounded-full ${s.engine.provider === "none" ? "bg-cream/40" : s.engine.status === "error" ? "bg-alert" : "bg-gold pulse-gold"}`} />
+            <span className="flex-1">
+              <span className="block text-[12px] font-semibold text-cream/90">{engineLabel}</span>
+              <span className="block font-mono text-[9px] uppercase tracking-wide text-cream/40">
+                {s.engine.provider === "none" ? "tap to connect a model" : s.engine.status === "error" ? "connection error" : s.engine.model}
+              </span>
             </span>
-            <div className="leading-tight">
-              <div className="text-[12px] font-medium text-canvas/90">{s.settings.ownerName} · Owner</div>
-              <div className="font-mono text-[9.5px] text-canvas/40">4 agents on duty</div>
-            </div>
+            <Icon name="chevR" size={13} className="text-cream/40 transition-transform group-hover:translate-x-0.5" />
+          </button>
+          <div className="mt-2 px-1 text-center font-mono text-[8.5px] uppercase tracking-[0.14em] text-cream/30">
+            no auto-send · no auto-spend · no invented data
           </div>
         </div>
       </aside>
 
-      {/* ============ Main ============ */}
+      {/* ================= Main ================= */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-4 border-b border-line bg-surface/80 px-6 py-3 backdrop-blur">
-          <div className="min-w-0">
-            <h1 className="truncate font-display text-[17px] font-bold leading-tight">{TITLES[s.view].title}</h1>
-            <p className="truncate text-[11.5px] text-inksoft">{TITLES[s.view].sub}</p>
+        <header className="flex items-center gap-3 border-b border-line bg-surface/80 px-6 py-3.5 backdrop-blur">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-[21px] font-bold leading-tight text-ink">{TITLES[s.view].title}</h1>
+            <p className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-inkmute">{TITLES[s.view].sub}</p>
           </div>
 
-          <form onSubmit={submitCmd} className="relative mx-auto w-full max-w-md">
-            <Icon name="search" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-inkmute" />
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (cmd.trim()) { h.sendChat(cmd.trim()); setCmd(""); } }}
+            className="relative hidden w-[330px] md:block"
+          >
+            <Icon name="search" size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-inkmute" />
             <input
               value={cmd}
               onChange={(e) => setCmd(e.target.value)}
-              placeholder="Ask the crew… “why is that flagged?” “pull up the VoltEdge agreement”"
-              className="w-full rounded-lg border border-line bg-canvas/70 py-2 pl-9 pr-3 text-[13px] outline-none transition-all placeholder:text-inkmute focus:border-ink/30 focus:bg-surface focus:ring-2 focus:ring-ink/10"
+              placeholder="Command the crew… “why is Riva at risk?”"
+              className="w-full rounded-full border border-line bg-canvas/70 py-2 pl-9 pr-3 text-[12.5px] outline-none transition-all placeholder:text-inkmute focus:border-plum/40 focus:bg-surface focus:ring-2 focus:ring-plum/10"
             />
           </form>
 
-          <div className="flex shrink-0 items-center gap-3">
-            <div className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 lg:flex" title="Marketing's scheduled idea drop">
-              <Icon name="clock" size={13} className="text-marketing" />
-              <span className="font-mono text-[11px] text-inksoft">6 AM drop in {countdown}</span>
-            </div>
-            <div className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 xl:flex" title="Operations health score">
-              <Icon name="gauge" size={13} className={health >= 75 ? "text-ops" : health >= 50 ? "text-warn" : "text-alert"} />
-              <span className="font-mono text-[11px] text-inksoft">ops {health}</span>
-            </div>
+          <div className="relative">
+            <button onClick={() => setBellOpen(!bellOpen)} className="relative grid h-9 w-9 place-items-center rounded-full border border-line bg-surface text-inksoft transition-colors hover:border-plum/40 hover:text-plum">
+              <Icon name="bell" size={16} />
+              {unread > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-gold px-1 font-mono text-[9px] font-bold text-plum">{unread}</span>}
+            </button>
+            {bellOpen && (
+              <div className="anim-pop absolute right-0 top-11 z-40 w-[340px] overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
+                <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5">
+                  <span className="text-[12.5px] font-bold">Notices</span>
+                  <button onClick={() => { h.markAllRead(); }} className="text-[11px] font-medium text-inksoft hover:text-plum">Mark all read</button>
+                </div>
+                <div className="scroll-slim max-h-[320px] overflow-y-auto">
+                  {s.notices.slice(0, 6).map((n) => (
+                    <button key={n.id} onClick={() => { h.markRead(n.id); if (n.actionView) h.go(n.actionView); setBellOpen(false); }}
+                      className="flex w-full items-start gap-2.5 border-b border-line/60 px-3.5 py-2.5 text-left transition-colors last:border-0 hover:bg-canvas/70">
+                      <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${n.read ? "bg-line" : AGENTS[n.agent].dot}`} />
+                      <span className="min-w-0">
+                        <span className={`block truncate text-[12px] ${n.read ? "text-inksoft" : "font-semibold text-ink"}`}>{n.title}</span>
+                        <span className="block font-mono text-[9.5px] text-inkmute">{AGENTS[n.agent].name} · {timeAgo(n.at)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => { h.go("inbox"); setBellOpen(false); }} className="w-full border-t border-line px-3.5 py-2 text-center text-[11.5px] font-semibold text-plum transition-colors hover:bg-canvas/70">
+                  Open full inbox
+                </button>
+              </div>
+            )}
           </div>
+
+          <button onClick={() => h.setChatOpen(true)} className="flex items-center gap-2 rounded-full bg-gold px-4 py-2 text-[12.5px] font-bold text-plum shadow-sm transition-all hover:brightness-105 active:scale-95">
+            <Icon name="thread" size={14} /> Ask the crew
+          </button>
         </header>
 
-        <main className="scroll-slim min-h-0 flex-1 overflow-y-auto">
-          <div key={s.view} className="anim-fade-up mx-auto max-w-[1180px] px-6 py-6">
+        <main className="scroll-slim flex-1 overflow-y-auto px-6 py-5" onClick={() => bellOpen && setBellOpen(false)}>
+          <div key={s.view} className="anim-fade-in mx-auto max-w-[1180px]">
             {s.view === "today" && <Today />}
             {s.view === "inbox" && <Inbox />}
             {s.view === "sales" && <Sales />}
@@ -214,34 +194,23 @@ export default function Shell() {
             {s.view === "ops" && <Ops />}
             {s.view === "vault" && <Vault />}
             {s.view === "activity" && <Activity />}
-            {s.view === "settings" && <Settings />}
+            {s.view === "settings" && <Settings onConnectModel={() => setGateOpen(true)} />}
           </div>
         </main>
       </div>
 
-      {/* ============ Chat launcher ============ */}
-      <button
-        onClick={() => h.setChatOpen(!s.chatOpen)}
-        className="group fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full bg-pine py-2.5 pl-3.5 pr-5 text-canvas shadow-xl transition-all hover:scale-[1.03] hover:bg-pine3 active:scale-95"
-      >
-        <span className="relative grid h-7 w-7 place-items-center rounded-full bg-canvas/10">
-          <Icon name="helm" size={17} />
-          {s.typing && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-sales pulse-dot" />}
-        </span>
-        <span className="text-[13px] font-semibold">{s.chatOpen ? "Close" : "Ask the crew"}</span>
-      </button>
-
-      <ChatPanel />
-
-      {/* ============ Toasts ============ */}
-      <div className="pointer-events-none fixed bottom-5 left-[248px] z-50 flex w-[380px] flex-col gap-2">
+      {/* toasts */}
+      <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-[380px] flex-col gap-2">
         {s.toasts.map((t) => (
-          <div key={t.id} className="anim-slide-left pointer-events-auto flex items-start gap-2.5 rounded-lg border border-pine3 bg-pine px-3.5 py-3 text-canvas shadow-xl">
-            {t.agent && <span className="mt-1"><AgentTag agent={t.agent} size="sm" /></span>}
-            <p className="flex-1 text-[12.5px] leading-snug">{t.text}</p>
+          <div key={t.id} className="anim-slide-left pointer-events-auto flex items-start gap-3 rounded-xl border border-line bg-plum px-4 py-3 text-cream shadow-2xl">
+            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${t.agent ? AGENTS[t.agent].dot : "bg-gold"}`} />
+            <p className="text-[12.5px] leading-snug">{t.text}</p>
           </div>
         ))}
       </div>
+
+      <ChatPanel />
+      <KeyGate open={gateOpen} onClose={() => { h.dismissGate(); setGateOpen(false); }} />
     </div>
   );
 }

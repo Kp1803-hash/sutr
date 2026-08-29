@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useHelm } from "../lib/store";
+import { useSutr } from "../lib/store";
 import type { UploadInput } from "../lib/store";
 import type { VaultDoc } from "../lib/types";
 import { daysUntil, timeAgo } from "../lib/types";
@@ -7,16 +7,14 @@ import { expiringDocs, searchDocs } from "../agents/vault";
 import { Btn, Card, Icon, Modal, SectionHead, inputCls } from "../components/ui";
 
 const TYPE_ICON: Record<string, string> = {
-  contract: "file", invoice: "file", license: "shield", brand: "spark", process: "gauge", correspondence: "mail", other: "file",
+  contract: "file", invoice: "file", brand: "spark", research: "search", spec: "gauge", agreement: "shield", pitch: "megaphone", other: "file",
 };
 
 const simContent = (name: string) =>
-  `OCR extraction (simulated) for ${name.replace(/\.[a-z0-9]+$/i, "")}: this document concerns ${name
-    .replace(/\.[a-z0-9]+$/i, "")
-    .toLowerCase()} — keywords were parsed from the extracted text layer so it is searchable by content, not just filename.`;
+  `OCR extraction (simulated) for ${name.replace(/\.[a-z0-9]+$/i, "")}: keywords were parsed from the extracted text layer so this document is searchable by content — type, related party, dates — not just its filename.`;
 
 export default function Vault() {
-  const h = useHelm();
+  const h = useSutr();
   const { s } = h;
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<string | null>(null);
@@ -29,9 +27,8 @@ export default function Vault() {
 
   const handleFiles = (files: FileList | null, mode: "new" | "replace") => {
     if (!files || files.length === 0) return;
-    const arr = Array.from(files);
     Promise.all(
-      arr.map(async (f): Promise<UploadInput> => {
+      Array.from(files).map(async (f): Promise<UploadInput> => {
         let content = simContent(f.name);
         if (/\.(txt|md|csv)$/i.test(f.name)) {
           try { content = await f.text(); } catch { /* keep simulated */ }
@@ -54,7 +51,7 @@ export default function Vault() {
 
   return (
     <div>
-      {/* access + search */}
+      {/* search + upload + access */}
       <div className="mb-5 grid gap-3 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <div className="relative">
@@ -62,12 +59,12 @@ export default function Vault() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder='Ask in natural language — “the vendor agreement with VoltEdge”, “license expiring soon”, “Maple Row invoice”…'
-              className="w-full rounded-xl border border-line bg-surface py-3.5 pl-11 pr-4 text-[14px] shadow-sm outline-none transition-all placeholder:text-inkmute focus:border-vault/50 focus:ring-2 focus:ring-vault/15"
+              placeholder='Ask in natural language — “the vendor agreement with Bloom & Baroque”, “show me the pitch deck”, “Meragi comparison research”…'
+              className="w-full rounded-xl border border-line bg-surface py-3.5 pl-11 pr-4 text-[14px] shadow-sm outline-none transition-all placeholder:text-inkmute focus:border-plum/40 focus:ring-2 focus:ring-plum/10"
             />
           </div>
           <p className="mt-1.5 font-mono text-[10.5px] uppercase tracking-[0.13em] text-inkmute">
-            searches names · auto-tags · extracted text · parties · dates
+            searches names · auto-tags · extracted text · parties · dates — with the match reason on every hit
           </p>
         </div>
         <div className="flex flex-col gap-2">
@@ -75,10 +72,10 @@ export default function Vault() {
           <Btn className="justify-center py-3" onClick={() => fileRef.current?.click()}>
             <Icon name="upload" size={15} /> Upload documents
           </Btn>
-          <div className="flex items-center gap-2 rounded-lg border border-vault/25 bg-vault/6 px-3 py-2">
-            <Icon name="lock" size={14} className="shrink-0 text-vault" />
+          <div className="flex items-center gap-2 rounded-lg border border-plum/20 bg-plum/5 px-3 py-2">
+            <Icon name="lock" size={14} className="shrink-0 text-plum2" />
             <p className="text-[11px] leading-snug text-ink/80">
-              Access-controlled: <b>{s.settings.vaultAccess.join(", ")}</b>. Manage the list in Settings.
+              Access-controlled: <b>{s.settings.vaultAccess.join(", ")}</b>. Manage in Settings.
             </p>
           </div>
         </div>
@@ -88,7 +85,7 @@ export default function Vault() {
       {expiring.length > 0 && (
         <div className="anim-fade-up mb-5 flex flex-wrap items-center gap-2.5 rounded-lg border border-warn/30 bg-warn/8 px-4 py-2.5">
           <Icon name="clock" size={15} className="text-warn" />
-          <span className="text-[12.5px] font-medium">Expiry watch:</span>
+          <span className="text-[12.5px] font-medium">Expiry watch (nightly sweep):</span>
           {expiring.map((d) => (
             <button key={d.id} onClick={() => setDetail(d.id)} className="rounded-full bg-surface px-2.5 py-1 text-[11.5px] font-medium shadow-sm transition-transform hover:scale-105">
               {d.name.split("—")[0].trim()} · {daysUntil(d.expiresAt!)}d
@@ -97,20 +94,19 @@ export default function Vault() {
         </div>
       )}
 
-      {/* results */}
       {q.trim() ? (
         <div>
           <SectionHead kicker={`${hits.length} match${hits.length === 1 ? "" : "es"} · ranked`} title={`Results for “${q}”`} right={<Btn size="sm" variant="ghost" onClick={() => setQ("")}>Clear</Btn>} />
           <div className="stagger space-y-2.5">
             {hits.map((hit) => (
-              <Card key={hit.doc.id} className="lift flex cursor-pointer items-center gap-4 p-4" >
+              <Card key={hit.doc.id} className="lift p-4">
                 <button className="flex min-w-0 flex-1 items-center gap-4 text-left" onClick={() => setDetail(hit.doc.id)}>
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-vault/10 text-vault">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-plum/8 text-plum2">
                     <Icon name={TYPE_ICON[hit.doc.type]} size={17} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-semibold">{hit.doc.name}</span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-vault">
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-[#8a6414]">
                       <Icon name="spark" size={11} /> {hit.reason}
                     </span>
                   </span>
@@ -125,20 +121,20 @@ export default function Vault() {
             {hits.length === 0 && (
               <Card className="p-10 text-center">
                 <Icon name="search" size={26} className="mx-auto text-inkmute" />
-                <p className="mt-2 text-[13px] text-inksoft">No matches in names, tags, content, parties, or dates. Try a party name or document type.</p>
+                <p className="mt-2 text-[13px] text-inksoft">No matches in names, tags, content, parties, or dates — and the Vault won't guess. Try a party (“WIPA”), a type (“pitch”), or a subject.</p>
               </Card>
             )}
           </div>
         </div>
       ) : (
         <div>
-          <SectionHead kicker={`${s.docs.length} documents · auto-tagged on upload`} title="The library" />
+          <SectionHead kicker={`${s.docs.length} documents · auto-tagged with reasons on upload`} title="The library" />
           <div className="stagger grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {s.docs.map((d) => (
               <button key={d.id} onClick={() => setDetail(d.id)} className="text-left">
                 <Card className="lift h-full p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="grid h-10 w-10 place-items-center rounded-lg bg-vault/10 text-vault">
+                    <span className="grid h-10 w-10 place-items-center rounded-lg bg-plum/8 text-plum2">
                       <Icon name={TYPE_ICON[d.type]} size={17} />
                     </span>
                     {expiryBadge(d)}
@@ -165,7 +161,7 @@ export default function Vault() {
         {doc && (
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-vault/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-vault">{doc.type}</span>
+              <span className="rounded-full bg-plum/8 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-plum2">{doc.type}</span>
               {expiryBadge(doc)}
               {doc.versions.length > 1 && (
                 <span className="rounded-full bg-ink/5 px-2.5 py-1 text-[11px] font-medium text-inksoft">v{doc.versions.length} — history kept</span>
@@ -173,20 +169,13 @@ export default function Vault() {
               <span className="ml-auto font-mono text-[10.5px] text-inkmute">{(doc.size / 1024).toFixed(0)} KB · uploaded {timeAgo(doc.uploadedAt)}</span>
             </div>
 
-            {doc.autoFiled && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg bg-ops/6 p-3">
-                <Icon name="helm" size={14} className="mt-0.5 shrink-0 text-ops" />
-                <p className="text-[12px] leading-relaxed text-ink/85">{doc.autoFiled}</p>
-              </div>
-            )}
-
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-line bg-canvas/60 p-3.5">
                 <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-inkmute">Why these tags</div>
                 <p className="mt-1 text-[12.5px] leading-relaxed">{doc.summary}</p>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {doc.tags.map((t) => (
-                    <span key={t} className="rounded-full bg-vault/10 px-2 py-0.5 text-[10.5px] font-medium text-vault">{t}</span>
+                    <span key={t} className="rounded-full bg-plum/8 px-2 py-0.5 text-[10.5px] font-medium text-plum2">{t}</span>
                   ))}
                 </div>
               </div>
@@ -219,7 +208,7 @@ export default function Vault() {
                 </Btn>
               </div>
               <span className="flex items-center gap-1.5 text-[11px] text-inksoft">
-                <Icon name="lock" size={12} className="text-vault" /> visible to {s.settings.vaultAccess.length} {s.settings.vaultAccess.length === 1 ? "person" : "people"} only
+                <Icon name="lock" size={12} className="text-plum2" /> visible to {s.settings.vaultAccess.length} {s.settings.vaultAccess.length === 1 ? "person" : "people"} only
               </span>
             </div>
           </div>

@@ -1,264 +1,178 @@
-import React from "react";
-import { AGENTS, type AgentId } from "../lib/types";
+import React, { useState } from "react";
+import { AGENTS, type AgentId, type Reasoning } from "../lib/types";
 
-/* ================= Icons (hand-drawn inline SVG) ================= */
-const PATHS: Record<string, React.ReactNode> = {
-  helm: (
-    <>
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
-      <circle cx="12" cy="4" r="1.4" />
-      <circle cx="12" cy="20" r="1.4" />
-      <circle cx="4" cy="12" r="1.4" />
-      <circle cx="20" cy="12" r="1.4" />
-    </>
-  ),
-  target: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="4.5" />
-      <circle cx="12" cy="12" r="0.8" />
-    </>
-  ),
-  megaphone: (
-    <>
-      <path d="m3 11 15-5.5v13L3 13v-2z" />
-      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-      <path d="M18 8.5a3.5 3.5 0 0 1 0 7" />
-    </>
-  ),
-  gauge: (
-    <>
-      <path d="m12 14 3.5-3.5" />
-      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
-    </>
-  ),
-  lock: (
-    <>
-      <rect x="3.5" y="11" width="17" height="10.5" rx="2" />
-      <path d="M7 11V7.5a5 5 0 0 1 10 0V11" />
-      <path d="M12 15.5v2" />
-    </>
-  ),
-  inbox: (
-    <>
-      <path d="M22 12.5h-6l-2 3h-4l-2-3H2" />
-      <path d="M5.45 5.61 2 12.5V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.5l-3.45-6.89A2 2 0 0 0 16.76 4.5H7.24a2 2 0 0 0-1.79 1.11z" />
-    </>
-  ),
-  pulse: <path d="M22 12h-4l-3 9L9 3l-3 9H2" />,
-  sliders: (
-    <>
-      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" />
-      <path d="M1.5 14h5M9.5 8h5M17.5 16h5" />
-    </>
-  ),
-  search: (
-    <>
-      <circle cx="11" cy="11" r="7.5" />
-      <path d="m21 21-4.5-4.5" />
-    </>
-  ),
-  send: (
-    <>
-      <path d="m22 2-7 20-4-9-9-4 20-7z" />
-      <path d="M22 2 11 13" />
-    </>
-  ),
-  plus: <path d="M5 12h14M12 5v14" />,
-  check: <path d="M20 6 9 17l-5-5" />,
-  x: <path d="M18 6 6 18M6 6l12 12" />,
-  clock: (
-    <>
-      <circle cx="12" cy="12" r="9.5" />
-      <path d="M12 6.5V12l3.5 2" />
-    </>
-  ),
-  alert: (
-    <>
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z" />
-      <path d="M12 9v4M12 17h.01" />
-    </>
-  ),
-  file: (
-    <>
-      <path d="M15 2.5H6a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" />
-      <path d="M14 2.5v4a2 2 0 0 0 2 2h4" />
-    </>
-  ),
-  upload: (
-    <>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="m17 8-5-5-5 5M12 3v12" />
-    </>
-  ),
-  copy: (
-    <>
-      <rect x="9" y="9" width="12.5" height="12.5" rx="2" />
-      <path d="M5.5 15H4.5a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2v1" />
-    </>
-  ),
-  mail: (
-    <>
-      <rect x="2" y="4.5" width="20" height="15" rx="2" />
-      <path d="m22 7.5-10 5.5L2 7.5" />
-    </>
-  ),
-  calendar: (
-    <>
-      <rect x="3" y="4.5" width="18" height="17" rx="2" />
-      <path d="M16 2.5v4M8 2.5v4M3 10h18" />
-    </>
-  ),
-  spark: (
-    <>
-      <path d="M10 3.5 11.8 8.2 16.5 10l-4.7 1.8L10 16.5 8.2 11.8 3.5 10l4.7-1.8z" />
-      <path d="m18 15 .9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z" />
-    </>
-  ),
-  shield: (
-    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-  ),
-  refresh: (
-    <>
-      <path d="M3 12a9 9 0 0 1 15.74-6L21 8M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-15.74 6L3 16M3 21v-5h5" />
-    </>
-  ),
-  chevR: <path d="m9 18 6-6-6-6" />,
-  chevD: <path d="m6 9 6 6 6-6" />,
-  ext: (
-    <>
-      <path d="M15 3h6v6M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    </>
-  ),
-  bolt: <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />,
-  user: (
-    <>
-      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </>
-  ),
-  eye: (
-    <>
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-      <circle cx="12" cy="12" r="3" />
-    </>
-  ),
+/* ---------------- Icons (hand-drawn strokes) ---------------- */
+const ICONS: Record<string, React.ReactNode> = {
+  thread: <><path d="M4 19c5-1 6-8 8-8s3 7 8 6" /><path d="M4 7c5 1 6 8 8 8s3-7 8-6" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></>,
+  spark: <><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" /></>,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></>,
+  send: <><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4z" /></>,
+  megaphone: <><path d="M3 11v3a1 1 0 001 1h2l4 4V6L6 10H4a1 1 0 00-1 1z" /><path d="M14 6c2.5 1.5 2.5 10.5 0 12" /><path d="M17.5 4.5c4 2.5 4 12.5 0 15" /></>,
+  gauge: <><path d="M4.5 19a9 9 0 1115 0" /><path d="M12 13l4-4" /><circle cx="12" cy="13" r="1.5" fill="currentColor" stroke="none" /></>,
+  file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 12h6M9 16h6" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
+  plus: <path d="M12 5v14M5 12h14" />,
+  check: <path d="M4.5 12.5l5 5L19.5 7" />,
+  x: <path d="M6 6l12 12M18 6L6 18" />,
+  chevR: <path d="M9 5l7 7-7 7" />,
+  chevD: <path d="M5 9l7 7 7-7" />,
+  bell: <><path d="M6 9a6 6 0 1112 0c0 6 2 7 2 7H4s2-1 2-7" /><path d="M10 20a2 2 0 004 0" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></>,
+  upload: <><path d="M12 16V4M6 10l6-6 6 6" /><path d="M4 20h16" /></>,
+  lock: <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 118 0v3" /></>,
+  eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 5-5.5 8-5.5s6.5 1.5 8 5.5" /></>,
+  users: <><circle cx="9" cy="8" r="3.5" /><path d="M2 20c1.2-3.4 4-4.8 7-4.8s5.8 1.4 7 4.8" /><path d="M16 4.6a3.5 3.5 0 010 6.8M18.5 15.4c1.7.7 3 2 3.5 4.6" /></>,
+  alert: <><path d="M12 3L2 20h20z" /><path d="M12 9.5V14" /><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" /></>,
+  refresh: <><path d="M20 12a8 8 0 10-2.3 5.6" /><path d="M20 6v6h-6" /></>,
+  inbox: <><path d="M3 13l3-8h12l3 8v6H3z" /><path d="M3 13h5l1.5 2.5h5L16 13h5" /></>,
+  key: <><circle cx="8" cy="14" r="4.5" /><path d="M11.5 10.5L20 2M16 6l3 3M13.5 8.5l2 2" /></>,
+  shield: <><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" /><path d="M8.5 12l2.5 2.5 4.5-5" /></>,
+  arrowR: <path d="M4 12h16M13 5l7 7-7 7" />,
+  brain: <><path d="M9.5 3.5A3 3 0 006 6.5a3.5 3.5 0 00-2 3.2c0 1 .4 1.9 1 2.6A3.7 3.7 0 006.5 19c.6 1.2 1.8 2 3.2 2 .9 0 1.6-.3 2.3-.8V4.8a3.4 3.4 0 00-2.5-1.3z" /><path d="M14.5 3.5A3 3 0 0118 6.5a3.5 3.5 0 012 3.2c0 1-.4 1.9-1 2.6a3.7 3.7 0 01-1.5 6.7c-.6 1.2-1.8 2-3.2 2-.9 0-1.6-.3-2.3-.8" /></>,
 };
 
-export function Icon({ name, size = 18, className = "" }: { name: string; size?: number; className?: string }) {
+export function Icon({ name, size = 16, className = "" }: { name: string; size?: number; className?: string }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      {PATHS[name] ?? PATHS.file}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${className}`} aria-hidden>
+      {ICONS[name] ?? ICONS.file}
     </svg>
   );
 }
 
-/* ================= Primitives ================= */
-
-export function Btn({
-  children, onClick, variant = "primary", size = "md", disabled, className = "", title,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  variant?: "primary" | "outline" | "ghost" | "soft" | "danger";
-  size?: "sm" | "md";
-  disabled?: boolean;
-  className?: string;
-  title?: string;
-}) {
-  const base =
-    "inline-flex items-center gap-1.5 font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none rounded-md";
-  const sizes = size === "sm" ? "text-[12.5px] px-2.5 py-1.5" : "text-[13.5px] px-3.5 py-2";
-  const variants = {
-    primary: "bg-ink text-canvas hover:bg-pine3 shadow-sm",
-    outline: "border border-line bg-surface text-ink hover:border-ink/40 hover:shadow-sm",
-    ghost: "text-inksoft hover:text-ink hover:bg-ink/5",
-    soft: "bg-ink/5 text-ink hover:bg-ink/10",
-    danger: "bg-alert/10 text-alert hover:bg-alert/20",
-  }[variant];
+/* ---------------- Agent identity chips ---------------- */
+export function AgentTag({ agent, size = "md" }: { agent: AgentId; size?: "sm" | "md" }) {
+  const a = AGENTS[agent];
   return (
-    <button title={title} disabled={disabled} onClick={onClick} className={`${base} ${sizes} ${variants} ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border font-medium ${a.border} ${a.soft} ${a.text} ${size === "sm" ? "px-2 py-0.5 text-[10.5px]" : "px-2.5 py-1 text-[11.5px]"}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${a.dot}`} />
+      {a.name}
+    </span>
+  );
+}
+
+export function EngineChip({ engine, model }: { engine: "claude" | "openai" | "local"; model?: string }) {
+  if (engine === "local")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-plum/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-plum2">
+        <Icon name="brain" size={11} /> Local inference
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a6414]">
+      <Icon name="spark" size={11} /> {engine === "claude" ? "Claude" : "OpenAI"}{model ? ` · ${model}` : ""}
+    </span>
+  );
+}
+
+/* ---------------- Reasoning panel (the explainability requirement) ---------------- */
+export function ReasoningPanel({ r, label = "Reasoning" }: { r?: Reasoning; label?: string }) {
+  const [open, setOpen] = useState(false);
+  if (!r) return null;
+  return (
+    <div className="rounded-lg border border-gold/25 bg-gold/6">
+      <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+        <span className="flex items-center gap-2 text-[11.5px] font-semibold text-[#8a6414]">
+          <Icon name="brain" size={13} /> {label}
+        </span>
+        <span className="flex items-center gap-2">
+          <EngineChip engine={r.engine} />
+          <Icon name="chevD" size={13} className={`text-[#8a6414] transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+      {open && (
+        <div className="anim-fade-in border-t border-gold/20 px-3 py-2.5">
+          <ol className="space-y-1.5">
+            {r.steps.map((s, i) => (
+              <li key={i} className="flex gap-2 text-[12px] leading-relaxed text-ink/85">
+                <span className="mt-0.5 font-mono text-[10px] font-semibold text-[#8a6414]">{i + 1}.</span>
+                {s}
+              </li>
+            ))}
+          </ol>
+          {r.dataCited.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.13em] text-inkmute">data cited:</span>
+              {r.dataCited.map((c) => (
+                <span key={c} className="rounded-full bg-surface px-2 py-0.5 text-[10.5px] font-medium text-ink/80 shadow-sm">{c}</span>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 font-mono text-[9.5px] uppercase tracking-wide text-inkmute">
+            {r.engine === "local" ? "transparent rule-based inference" : `${r.tokens ?? "?"} output tokens · ${(r.ms ?? 0) / 1000}s`}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Primitives ---------------- */
+export function Btn({
+  children, onClick, variant = "solid", size = "md", className = "", disabled, title,
+}: {
+  children: React.ReactNode; onClick?: () => void; variant?: "solid" | "gold" | "outline" | "ghost" | "danger";
+  size?: "sm" | "md"; className?: string; disabled?: boolean; title?: string;
+}) {
+  const v = {
+    solid: "bg-plum text-cream hover:bg-plum3",
+    gold: "bg-gold text-plum font-semibold hover:brightness-105 shadow-sm",
+    outline: "border border-line bg-surface text-ink hover:border-plum/40 hover:text-plum",
+    ghost: "text-inksoft hover:bg-plum/6 hover:text-plum",
+    danger: "border border-alert/30 bg-alert/8 text-alert hover:bg-alert/15",
+  }[variant];
+  const s = size === "sm" ? "px-2.5 py-1.5 text-[12px] gap-1.5" : "px-3.5 py-2 text-[13px] gap-2";
+  return (
+    <button title={title} onClick={onClick} disabled={disabled}
+      className={`inline-flex items-center rounded-lg font-medium transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-40 ${v} ${s} ${className}`}>
       {children}
     </button>
   );
 }
 
-export function AgentTag({ agent, size = "md" }: { agent: AgentId; size?: "sm" | "md" }) {
-  const m = AGENTS[agent];
+export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(34,18,38,0.05)] ${className}`}>{children}</div>;
+}
+
+export function Bar({ pct, className = "bg-gold" }: { pct: number; className?: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-medium ${m.chip} ${
-        size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-[12px]"
-      }`}
-    >
-      <Icon name={m.icon} size={size === "sm" ? 11 : 13} />
-      {m.name}
-    </span>
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-plum/8">
+      <div className={`anim-bar h-full rounded-full ${className}`} style={{ width: `${Math.min(100, Math.max(2, pct))}%` }} />
+    </div>
   );
 }
 
-export function Dot({ agent, pulse = false }: { agent: AgentId; pulse?: boolean }) {
-  return <span className={`inline-block h-2 w-2 rounded-full ${AGENTS[agent].dot} ${pulse ? "pulse-dot" : ""}`} />;
-}
-
-/** Explainability affordance — hover/focus reveals the agent's reasoning. */
-export function Why({ text, label = "Why?" }: { text: string; label?: string }) {
+export function Stat({ label, value, sub, accent }: { label: string; value: React.ReactNode; sub?: string; accent?: string }) {
   return (
-    <span className="why-wrap relative inline-flex">
-      <button
-        tabIndex={0}
-        className="inline-flex items-center gap-1 rounded-full bg-ink/5 px-2 py-0.5 text-[11px] font-medium text-inksoft transition-colors hover:bg-ink/10 hover:text-ink"
-      >
-        <Icon name="spark" size={11} />
-        {label}
-      </button>
-      <span className="why-pop absolute bottom-full left-0 z-40 mb-2 block w-72 rounded-lg border border-line bg-pine p-3 text-left text-[12px] leading-relaxed text-canvas shadow-xl">
-        <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-canvas/50">
-          Agent reasoning
-        </span>
-        {text}
-      </span>
-    </span>
+    <Card className="p-4">
+      <div className="font-mono text-[9.5px] uppercase tracking-[0.15em] text-inkmute">{label}</div>
+      <div className={`mt-1 font-display text-[26px] font-bold leading-none ${accent ?? "text-ink"}`}>{value}</div>
+      {sub && <div className="mt-1.5 text-[11.5px] leading-snug text-inksoft">{sub}</div>}
+    </Card>
   );
 }
 
-export function Modal({
-  open, onClose, title, children, wide,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: React.ReactNode;
-  children: React.ReactNode;
-  wide?: boolean;
-}) {
+export function SectionHead({ kicker, title, right }: { kicker: string; title: string; right?: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+      <div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8a6414]">{kicker}</div>
+        <h2 className="font-display text-[20px] font-bold leading-tight text-ink">{title}</h2>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="anim-fade-in absolute inset-0 bg-pine/50 backdrop-blur-[2px]" onClick={onClose} />
-      <div
-        className={`anim-pop relative max-h-[88vh] w-full overflow-y-auto scroll-slim rounded-xl border border-line bg-surface shadow-2xl ${
-          wide ? "max-w-2xl" : "max-w-lg"
-        }`}
-      >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/95 px-5 py-3.5 backdrop-blur">
-          <h3 className="font-display text-[15px] font-semibold">{title}</h3>
-          <button onClick={onClose} className="rounded-md p-1.5 text-inksoft transition-colors hover:bg-ink/5 hover:text-ink">
-            <Icon name="x" size={16} />
-          </button>
+    <div className="anim-fade-in fixed inset-0 z-50 flex items-center justify-center bg-plum/50 p-4 backdrop-blur-[2px]" onClick={onClose}>
+      <div className={`anim-pop max-h-[88vh] w-full overflow-y-auto scroll-slim rounded-2xl border border-line bg-surface shadow-2xl ${wide ? "max-w-2xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between border-b border-line bg-surface/95 px-5 py-3.5 backdrop-blur">
+          <h3 className="font-display text-[16px] font-bold text-ink">{title}</h3>
+          <button onClick={onClose} className="rounded-md p-1.5 text-inksoft transition-colors hover:bg-plum/8 hover:text-plum"><Icon name="x" size={15} /></button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -266,66 +180,5 @@ export function Modal({
   );
 }
 
-export function SectionHead({ kicker, title, right }: { kicker: string; title: string; right?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex items-end justify-between gap-3">
-      <div>
-        <div className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-inkmute">{kicker}</div>
-        <h2 className="font-display text-[19px] font-semibold leading-tight">{title}</h2>
-      </div>
-      {right}
-    </div>
-  );
-}
-
-export function Bar({ pct, className = "bg-ops" }: { pct: number; className?: string }) {
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/8">
-      <div className={`anim-bar h-full rounded-full ${className}`} style={{ width: `${Math.min(100, Math.max(2, pct))}%` }} />
-    </div>
-  );
-}
-
-export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-line bg-surface ${className}`}>{children}</div>;
-}
-
-export function Sev({ s }: { s: "high" | "medium" | "low" }) {
-  const map = {
-    high: "bg-alert/10 text-alert ring-alert/25",
-    medium: "bg-warn/10 text-warn ring-warn/30",
-    low: "bg-ink/5 text-inksoft ring-ink/15",
-  }[s];
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide ring-1 ${map}`}>
-      {s}
-    </span>
-  );
-}
-
-export function Dial({ score }: { score: number }) {
-  const r = 52;
-  const c = 2 * Math.PI * r;
-  const color = score >= 75 ? "#2e7d63" : score >= 50 ? "#b98a2f" : "#b4443c";
-  return (
-    <div className="relative h-36 w-36">
-      <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90">
-        <circle cx="64" cy="64" r={r} fill="none" stroke="#e3e8e0" strokeWidth="10" />
-        <circle
-          cx="64" cy="64" r={r} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={c - (c * score) / 100}
-          style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.22,0.9,0.3,1)" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display text-[34px] font-bold leading-none" style={{ color }}>
-          {score}
-        </span>
-        <span className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-inkmute">/ 100</span>
-      </div>
-    </div>
-  );
-}
-
 export const inputCls =
-  "w-full rounded-md border border-line bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-inkmute outline-none transition-all focus:border-ink/40 focus:ring-2 focus:ring-ink/10";
+  "w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] outline-none transition-all placeholder:text-inkmute focus:border-plum/40 focus:ring-2 focus:ring-plum/10";

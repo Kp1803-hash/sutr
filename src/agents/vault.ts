@@ -3,30 +3,26 @@ import type { VaultDoc } from "../lib/types";
 /**
  * Document Vault Agent — store, auto-tag, retrieve, version, expiry-watch.
  * Every tag is explainable: the agent records *why* it tagged something.
+ * Access control is enforced by the store (settings.vaultAccess).
  */
 
-const KEYWORDS: Array<[RegExp, string]> = [
-  [/\b(agree|contract|master supply)\b/i, "contract"],
-  [/\bnda|non-?disclosure\b/i, "nda"],
-  [/\binvoice|receipt|deposit\b/i, "invoice"],
-  [/\blicense|licence|permit|certif/i, "license"],
-  [/\bbrand|logo|guideline/i, "brand"],
-  [/\bchecklist|process|survey|template/i, "process"],
-  [/\brenewal|renew|expires?\b/i, "renewal"],
-  [/\bvendor|supply|supplier\b/i, "vendor"],
-  [/\bcompliance|audit|safety\b/i, "compliance"],
+const KEYWORDS: Array<[RegExp, string, VaultDoc["type"] | null]> = [
+  [/\b(agree|contract|master services)\b/i, "contract", "contract"],
+  [/\bnda|non-?disclosure\b/i, "nda", "contract"],
+  [/\binvoice|receipt|deposit\b/i, "invoice", "invoice"],
+  [/\bdeck|pitch|investor|seed round\b/i, "pitch", "pitch"],
+  [/\bresearch|tear-?down|comparison|market\b/i, "research", "research"],
+  [/\bspec|roadmap|build plan|mvp\b/i, "spec", "spec"],
+  [/\bbrand|logo|guideline|identity\b/i, "brand", "brand"],
+  [/\bmou|partnership|memorandum\b/i, "partnership", "agreement"],
+  [/\bvendor|supply|floral|catering\b/i, "vendor", "agreement"],
+  [/\brenewal|renew|expires?\b/i, "renewal", null],
 ];
 
 const PEOPLE = [
-  "VoltEdge Supply",
-  "SunPanel Co",
-  "Maple Row Realty",
-  "Cedar & Sage Spa",
-  "Harbor & Vine",
-  "Bluebird Dental",
-  "Kite Fitness",
-  "Northwind Roastery",
-  "Willow Creek",
+  "Aarav Weddings", "Riva.Events", "Bandhan Celebrations", "Mango Leaf Events",
+  "Knot & Bloom", "Saffron Trails", "Vows & Vines",
+  "Bloom & Baroque", "WIPA", "Sage Capital", "Leela Palace",
 ];
 
 export function autoTag(name: string, content: string) {
@@ -35,15 +31,13 @@ export function autoTag(name: string, content: string) {
   const reasons: string[] = [];
 
   let type: VaultDoc["type"] = "other";
-  for (const [re, tag] of KEYWORDS) {
+  for (const [re, tag, docType] of KEYWORDS) {
     if (re.test(text)) {
       tags.add(tag);
-      if (tag === "contract" || tag === "invoice" || tag === "license" || tag === "brand" || tag === "process") {
-        if (type === "other") {
-          type = tag as VaultDoc["type"];
-          reasons.push(`type “${tag}” matched the document text`);
-        }
-      } else {
+      if (docType && type === "other") {
+        type = docType;
+        reasons.push(`type “${docType}” matched the document text`);
+      } else if (!docType) {
         reasons.push(`tag “${tag}” matched keywords`);
       }
     }
@@ -79,13 +73,9 @@ export function autoTag(name: string, content: string) {
   };
 }
 
-export interface SearchHit {
-  doc: VaultDoc;
-  score: number;
-  reason: string;
-}
+export interface SearchHit { doc: VaultDoc; score: number; reason: string; }
 
-const MONTHS = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 export function searchDocs(query: string, docs: VaultDoc[]): SearchHit[] {
   const q = query.toLowerCase();
@@ -100,10 +90,10 @@ export function searchDocs(query: string, docs: VaultDoc[]): SearchHit[] {
     const person = (doc.person ?? "").toLowerCase();
     const content = doc.content.toLowerCase();
     for (const t of tokens) {
-      if (name.includes(t)) { score += 4; matched.push(`name`); }
+      if (name.includes(t)) { score += 4; matched.push("name"); }
       if (tags.includes(t)) { score += 3; matched.push(`tag “${t}”`); }
       if (person.includes(t)) { score += 3; matched.push(`party “${doc.person}”`); }
-      if (content.includes(t)) { score += 2; matched.push(`content`); }
+      if (content.includes(t)) { score += 2; matched.push("content"); }
       if (doc.type === t) { score += 3; matched.push(`type “${t}”`); }
       const mi = MONTHS.findIndex((m) => t.length >= 4 && m.startsWith(t.slice(0, 4)));
       if (mi >= 0) {
@@ -114,14 +104,12 @@ export function searchDocs(query: string, docs: VaultDoc[]): SearchHit[] {
         }
       }
     }
-    if (score > 0) {
-      hits.push({ doc, score, reason: `matched on ${[...new Set(matched)].slice(0, 3).join(", ")}` });
-    }
+    if (score > 0) hits.push({ doc, score, reason: `matched on ${[...new Set(matched)].slice(0, 3).join(", ")}` });
   }
   return hits.sort((a, b) => b.score - a.score).slice(0, 4);
 }
 
-export function expiringDocs(docs: VaultDoc[], withinDays = 30): VaultDoc[] {
+export function expiringDocs(docs: VaultDoc[], withinDays = 45): VaultDoc[] {
   return docs.filter((doc) => {
     if (!doc.expiresAt) return false;
     const days = (new Date(doc.expiresAt).getTime() - Date.now()) / 86400000;
