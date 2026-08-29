@@ -1,5 +1,10 @@
+import { HelmProvider } from "./lib/store";
+import Shell from "./components/Shell";
+
 export default function App() {
   return (
-    <div/>
+    <HelmProvider>
+      <Shell />
+    </HelmProvider>
   );
 }
