@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", Georgia, serif;
+  --font-body: "Spline Sans", ui-sans-serif, sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, monospace;
+
+  --color-paper: #f2f5f0;
+  --color-surface: #ffffff;
+  --color-ink: #0f1b15;
+  --color-ink2: #4e5d55;
+  --color-mute: #89968e;
+  --color-line: #dce4db;
+  --color-line2: #c6d2c5;
+  --color-pine: #0f1b15;
+  --color-pine2: #182720;
+  --color-pine3: #24382e;
+  --color-leaf: #1e7a50;
+  --color-leafbright: #2fa06a;
+  --color-sun: #ffd43a;
+  --color-sunsoft: #fff0b8;
+  --color-coral: #e5484d;
+  --color-coralsoft: #fce3e2;
+  --color-amber: #dfa100;
+  --color-sky: #4e7fd9;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #ffd43a66;
+}
+
+/* ---------- ambient layered backgrounds ---------- */
+.board-bg {
+  background-image: radial-gradient(rgba(15, 27, 21, 0.055) 1px, transparent 1px),
+    radial-gradient(820px 380px at 108% -8%, rgba(255, 212, 58, 0.14), transparent 62%),
+    radial-gradient(700px 420px at -12% 112%, rgba(30, 122, 80, 0.1), transparent 60%);
+  background-size: 22px 22px, auto, auto;
+}
+
+.rail-texture {
+  background-image: linear-gradient(rgba(242, 245, 240, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242, 245, 240, 0.045) 1px, transparent 1px),
+    radial-gradient(500px 320px at 110% -10%, rgba(255, 212, 58, 0.1), transparent 60%),
+    radial-gradient(420px 320px at -20% 115%, rgba(47, 160, 106, 0.12), transparent 60%);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+}
+
+/* ---------- scrollbars ---------- */
+.scroll-slim::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: #c6d2c5;
+  border-radius: 9px;
+  border: 2px solid var(--color-paper);
+}
+.scroll-slim::-webkit-scrollbar-thumb:hover {
+  background: #a9bba8;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- motion ---------- */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes drawTick {
+  from { stroke-dashoffset: 30; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes tickStroke {
+  from { stroke-dashoffset: 26; opacity: 0; }
+  to { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes softPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 212, 58, 0.45); }
+  55% { box-shadow: 0 0 0 6px rgba(255, 212, 58, 0); }
+}
+@keyframes spin360 {
+  to { transform: rotate(360deg); }
+}
+@keyframes drift {
+  0%, 100% { transform: translateY(0) rotate(10deg); }
+  50% { transform: translateY(-8px) rotate(12deg); }
+}
+@keyframes subDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.anim-fade-up { animation: fadeUp 0.4s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-fade-in { animation: fadeIn 0.25s ease both; }
+.anim-pop { animation: popIn 0.3s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-toast { animation: toastIn 0.3s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-sub { animation: subDown 0.25s ease both; }
+.anim-drift { animation: drift 7s ease-in-out infinite; }
+.spin-slow { animation: spin360 1s linear infinite; }
+.pulse-dot { animation: softPulse 2s ease-out infinite; }
+
+.stagger > * { animation: fadeUp 0.4s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+
+/* checkbox tick draw */
+.tick-draw {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: drawTick 0.32s cubic-bezier(0.65, 0, 0.35, 1) 0.04s forwards;
+}
+
+/* tally strokes */
+.tally-stroke {
+  stroke-dasharray: 26;
+  animation: tickStroke 0.5s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+/* strikethrough that draws itself */
+.strike {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 2px;
+  background-position: 0 62%;
+  background-repeat: no-repeat;
+  transition: background-size 0.35s cubic-bezier(0.22, 0.9, 0.3, 1), color 0.3s ease;
+}
+.strike-on {
+  background-size: 100% 2px;
+}
+
+/* ---------- micro-interactions ---------- */
+.lift {
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.lift:hover {
+  transform: translateY(-1px);
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  border: 1px solid rgba(242, 245, 240, 0.22);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: rgba(242, 245, 240, 0.65);
+}
